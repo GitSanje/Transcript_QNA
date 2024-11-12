@@ -14,6 +14,25 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate, PromptTemplate
 
+from langchain.embeddings import OpenAIEmbeddings, CohereEmbeddings, OllamaEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
+# Example function that can use any embedding provider
+def get_embeddings(provider: str, **kwargs) :
+    if provider == "openai":
+        return OpenAIEmbeddings(**kwargs)
+    elif provider == "cohere":
+        return CohereEmbeddings(**kwargs)
+    elif provider == "ollama":
+        return OllamaEmbeddings(**kwargs)
+    elif provider == "gemini":
+        os.environ["GOOGLE_API_KEY"] =get_api_key("GEMINI_API_KEY")
+        return GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    else:
+        raise ValueError(f"Unsupported provider: {provider}")
+
 def load_env():
     _ = load_dotenv(find_dotenv())
     
@@ -91,61 +110,60 @@ def get_video_details(api_key, video_id):
 
     return video_description, channel_about,country,channel_name,transcript_text
     
-def generate_pdf(video_description, channel_about,country,channel_name,transcript_text,url):
-    pdf = FPDF()
-
-    pdf.add_page()
 
 
-    pdf.set_font("Arial", size=12)
-    # Channel Name 
-    pdf.set_font("Arial", "B", 12)  # Bold font
-    pdf.cell(0, 10, "Channel Name:", ln=True)
-    pdf.set_font("Arial", size=12)  # Regular font
-    pdf.multi_cell(0, 10, channel_name)
-    pdf.ln(5)
+def generate_pdf(video_description, channel_about, country, channel_name, transcript_text, url):
+    pdf_file = "output.pdf"
+    c = canvas.Canvas(pdf_file, pagesize=letter)
+    
+    # Title
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(100, 750, "Channel Details")
+    
+    # Channel Name
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, 720, "Channel Name:")
+    c.setFont("Helvetica", 12)
+    c.drawString(150, 720, channel_name)
 
-    # Add video description
-    pdf.set_font("Arial", "B", 12)  # Bold font
-    pdf.cell(0, 10, "Video URL:", ln=True)
-    pdf.set_font("Arial", size=12)  # Regular font
-    pdf.multi_cell(0, 10, url)
-    pdf.ln(5)
+    # Video URL
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, 700, "Video URL:")
+    c.setFont("Helvetica", 12)
+    c.drawString(150, 700, url)
+
+    # Channel About
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, 680, "Channel About:")
+    c.setFont("Helvetica", 12)
+    c.drawString(150, 680, channel_about)
+
+    # Video Description
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, 660, "Video Description:")
+    c.setFont("Helvetica", 12)
+    c.drawString(150, 660, video_description)
+
+    # Country
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, 640, "Country:")
+    c.setFont("Helvetica", 12)
+    c.drawString(150, 640, country)
+
+    # Transcript
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, 620, "Transcript:")
+    c.setFont("Helvetica", 12)
+    c.drawString(150, 620, transcript_text)
+
+    c.save()
+    print(f"PDF created successfully as '{pdf_file}'")
 
 
-    # Add channel "about" information
-    pdf.set_font("Arial", "B", 12)  # Bold font
-    pdf.cell(0, 10, "Channel About:", ln=True)
-    pdf.set_font("Arial", size=12)  # Regular font
-    pdf.multi_cell(0, 10, channel_about)
-    pdf.ln(5)
-
-    # Add video description
-    pdf.set_font("Arial", "B", 12)  # Bold font
-    pdf.cell(0, 10, "Video Description:", ln=True)
-    pdf.set_font("Arial", size=12)  # Regular font
-    pdf.multi_cell(0, 10, video_description)
-    pdf.ln(5)
-
-    # Add country
-    pdf.set_font("Arial", "B", 12)  # Bold font
-    pdf.cell(0, 10, "Country:", ln=True)
-    pdf.set_font("Arial", size=12)  # Regular font
-    pdf.multi_cell(0, 10, country)
-    pdf.ln(10)
-
-    # Add transcript
-    pdf.set_font("Arial", "B", 12)  # Bold font
-    pdf.cell(0, 10, "Transcript:", ln=True)
-    pdf.set_font("Arial", size=12)  # Regular font
-    pdf.multi_cell(0, 10, transcript_text)
-
-    # Save the PDF
-    pdf.output("output.pdf")
-    print("PDF created successfully as 'output.pdf'")
     
     
 def process_pdf(uploaded_file,message_container,embeddings):
+  
     loader = UnstructuredPDFLoader(file_path=uploaded_file)
     with message_container.chat_message("assistant", avatar="🤖"):
         with st.spinner("Extracting text from PDF..."):
@@ -165,6 +183,7 @@ def process_pdf(uploaded_file,message_container,embeddings):
 
 def chat_pdf(prompt,message_container,llm):
     try:
+        
         QUERY_PROMPT = PromptTemplate(
                 input_variables=["question"],
                 template="""You are an AI language model assistant. Your task is to generate five

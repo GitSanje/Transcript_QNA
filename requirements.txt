@@ -4,9 +4,12 @@ youtube_transcript_api
 googleapiclient
 requests
 fpdf
+reportlab
 langchain
 langchain_community
 langchain_ollama
 langchain_core
+langchain_openai
+langchain_google_genai
 protobuf==3.20.3
 chromadb==0.4.22
