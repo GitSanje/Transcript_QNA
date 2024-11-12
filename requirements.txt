@@ -1,1 +1,10 @@
 streamlit
+ollama
+youtube_transcript_api
+googleapiclient
+requests
+fpdf
+langchain_community
+protobuf==3.20.3
+chromadb==0.4.22
+langchain-ollama
