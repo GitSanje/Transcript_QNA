@@ -5,7 +5,14 @@ from dotenv import load_dotenv, find_dotenv
 import os
 from fpdf import FPDF
 from langchain_community.document_loaders import UnstructuredPDFLoader
-
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_ollama import OllamaEmbeddings
+from langchain.retrievers.multi_query import MultiQueryRetriever
+import streamlit as st
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain.prompts import ChatPromptTemplate, PromptTemplate
 
 def load_env():
     _ = load_dotenv(find_dotenv())
@@ -136,3 +143,66 @@ def generate_pdf(video_description, channel_about,country,channel_name,transcrip
     # Save the PDF
     pdf.output("output.pdf")
     print("PDF created successfully as 'output.pdf'")
+    
+    
+def process_pdf(uploaded_file,message_container,embeddings):
+    loader = UnstructuredPDFLoader(file_path=uploaded_file)
+    with message_container.chat_message("assistant", avatar="🤖"):
+        with st.spinner("Extracting text from PDF..."):
+            data = loader.load()
+            # Split content into chunks for embedding
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=7500, chunk_overlap=100)
+            chunks = text_splitter.split_documents(data)
+
+            # Embed chunks into a vector database
+            vector_db = Chroma.from_documents(
+                documents=chunks,
+                embedding=embeddings,
+                collection_name="local-rag"
+            )
+    return vector_db
+
+
+def chat_pdf(prompt,message_container,llm):
+    try:
+        QUERY_PROMPT = PromptTemplate(
+                input_variables=["question"],
+                template="""You are an AI language model assistant. Your task is to generate five
+                different versions of the given user question to retrieve relevant documents from
+                a vector database. By generating multiple perspectives on the user question, your
+                goal is to help the user overcome some of the limitations of the distance-based
+                similarity search. Provide these alternative questions separated by newlines.
+                Original question: {question}""",
+                )   
+        # RAG prompt
+        template = """Answer the question based ONLY on the following context:
+                {context}
+                Question: {question}
+                """
+        prompt_template = ChatPromptTemplate.from_template(template)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Retrieve and answer based on vector DB
+        retriever = MultiQueryRetriever.from_llm(
+                    st.session_state.vector_db.as_retriever(),
+                    llm,
+                    prompt=QUERY_PROMPT
+                )
+        
+        # Process question with RAG chain
+        chain = (
+                {"context": retriever, "question": RunnablePassthrough()}
+                | prompt_template
+                | llm
+                | StrOutputParser()
+            )
+        message_container.chat_message("user", avatar="😎").markdown(prompt)
+        # Run the chain and get response
+        with message_container.chat_message("assistant", avatar="🤖"):
+                with st.spinner("Model working..."):
+                    response = chain.invoke( prompt)
+                    st.markdown(response)
+        # Add assistant response to session state
+        st.session_state.messages.append({"role": "assistant", "content": response})
+    except Exception as e:
+                st.error(f"Error: {e}", icon="⛔️")
